@@ -1,139 +1,273 @@
 package Maping_EarthQuakes;
 
-//Java utilities libraries
 import java.util.ArrayList;
-//import java.util.Collections;
-//import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-//Processing library
-import processing.core.PApplet;
-
-//Unfolding libraries
 import de.fhpotsdam.unfolding.UnfoldingMap;
-import de.fhpotsdam.unfolding.marker.Marker;
+import de.fhpotsdam.unfolding.data.Feature;
+import de.fhpotsdam.unfolding.data.GeoJSONReader;
 import de.fhpotsdam.unfolding.data.PointFeature;
-import de.fhpotsdam.unfolding.marker.SimplePointMarker;
+import de.fhpotsdam.unfolding.geo.Location;
+import de.fhpotsdam.unfolding.marker.AbstractShapeMarker;
+import de.fhpotsdam.unfolding.marker.Marker;
+import de.fhpotsdam.unfolding.marker.MultiMarker;
 import de.fhpotsdam.unfolding.providers.Google;
 import de.fhpotsdam.unfolding.providers.MBTilesMapProvider;
 import de.fhpotsdam.unfolding.utils.MapUtils;
-
-//Parsing library
 import parsing.ParseFeed;
+import processing.core.PApplet;
 
 /** EarthquakeCityMap
  * An application with an interactive map displaying earthquake data.
- * Author: UC San Diego Intermediate Software Development MOOC team
- * @author Your name here
- * Date: July 17, 2015
+ * Anotida George Chigunwe
+ * Date: Jan 27, 2019
  * */
 public class EarthquakeCityMap extends PApplet {
-
-	// You can ignore this.  It's to keep eclipse from generating a warning.
+	
+	// We will use member variables, instead of local variables, to store the data
+	// that the setUp and draw methods will need to access (as well as other methods)
+	// You will use many of these variables, but the only one you should need to add
+	// code to modify is countryQuakes, where you will store the number of earthquakes
+	// per country.
+	
+	
 	private static final long serialVersionUID = 1L;
 
-	// IF YOU ARE WORKING OFFLINE, change the value of this variable to true
+	// IF WORKING OFFILINE, change the value of this variable to true
 	private static final boolean offline = false;
 	
-	// Less than this threshold is a light earthquake
-	public static final float THRESHOLD_MODERATE = 5;
-	// Less than this threshold is a minor earthquake
-	public static final float THRESHOLD_LIGHT = 4;
-
 	/** This is where to find the local tiles, for working without an Internet connection */
 	public static String mbTilesString = "blankLight-1-3.mbtiles";
+	
+	
+
+	//feed with magnitude 2.5+ Earthquakes
+	private String earthquakesURL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.atom";
+	
+	// The files containing city names and info and country names and info
+	private String cityFile = "city-data.json";
+	private String countryFile = "countries.geo.json";
 	
 	// The map
 	private UnfoldingMap map;
 	
-	//feed with magnitude 2.5+ Earthquakes
-	private String earthquakesURL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.atom";
+	// Markers for each city
+	private List<Marker> cityMarkers;
+	// Markers for each earthquake
+	private List<Marker> quakeMarkers;
 
+	// A List of country markers
+	private List<Marker> countryMarkers;
 	
-	public void setup() {
-		size(950, 600, OPENGL);
-
+	//A Map of features(Quakes) on land and features (Quakes) sea
+	private HashMap<String,ArrayList<String>> countryWithQuakes;
+	
+	
+	int count = 0;
+	
+	public void setup() {		
+		// (1) Initializing canvas and map tiles
+		size(900, 700, OPENGL);
 		if (offline) {
-		    map = new UnfoldingMap(this, 200, 50, 700, 500, new MBTilesMapProvider(mbTilesString));
-		    earthquakesURL = "2.5_week.atom"; 	// Same feed, saved Aug 7, 2015, for working offline
+		    map = new UnfoldingMap(this, 200, 50, 650, 600, new MBTilesMapProvider(mbTilesString));
+		    earthquakesURL = "2.5_week.atom";  // The same feed, but saved August 7, 2015
 		}
 		else {
-			map = new UnfoldingMap(this, 200, 50, 700, 500, new Google.GoogleMapProvider());
-			// IF YOU WANT TO TEST WITH A LOCAL FILE, uncomment the next line
-			//earthquakesURL = "2.5_week.atom";
+			map = new UnfoldingMap(this, 200, 50, 650, 600, new Google.GoogleMapProvider());
+			// TO TEST WITH A LOCAL FILE, uncomment the next line
+		    //earthquakesURL = "2.5_week.atom";
 		}
+		MapUtils.createDefaultEventDispatcher(this, map);
 		
-	    map.zoomToLevel(2);
-	    MapUtils.createDefaultEventDispatcher(this, map);	
-			
-	    // The List you will populate with new SimplePointMarkers
-	    List<Marker> markers = new ArrayList<Marker>();
-
-	    //Use provided parser to collect properties for each earthquake
-	    //PointFeatures have a getLocation method
+		// EARTHQUAKE URL FOR TESTING
+		// earthquakesURL = "test1.atom";
+		// earthquakesURL = "test2.atom";
+		
+		// WHEN TAKING THIS QUIZ: Uncomment the next line
+		earthquakesURL = "quiz1.atom";
+		
+		
+		// (2) Reading in earthquake data and geometric properties
+	    //     STEP 1: load country features and markers
+		List<Feature> countries = GeoJSONReader.loadData(this, countryFile);
+		countryMarkers = MapUtils.createSimpleMarkers(countries);
+		
+		//     STEP 2: read in city data
+		List<Feature> cities = GeoJSONReader.loadData(this, cityFile);
+		cityMarkers = new ArrayList<Marker>();
+		for(Feature city : cities) {
+		  cityMarkers.add(new CityMarker(city));
+		}
+	    
+		//     STEP 3: read in earthquake RSS feed
 	    List<PointFeature> earthquakes = ParseFeed.parseEarthquake(this, earthquakesURL);
+	    quakeMarkers = new ArrayList<Marker>();
+	    countryWithQuakes = new HashMap<String,ArrayList<String>>();
+	    for(PointFeature feature : earthquakes) {
+		  //check if LandQuake
+		  if(isLand(feature)) {
+		    quakeMarkers.add(new LandQuakeMarker(feature));
+		    
+		  }
+		  // OceanQuakes
+		  else {
+		    quakeMarkers.add(new OceanQuakeMarker(feature));
+		  }
+	    }
+
+	    //for debugging		
+	    printQuakes();
+	 		
+	    // (3) Add markers to map
+	    //     NOTE: Country markers are not added to the map.  They are used
+	    //           for their geometric properties
+	    map.addMarkers(quakeMarkers);
+	    map.addMarkers(cityMarkers);
 	    
-	    //TODO (Step 3): Add a loop here that calls createMarker (see below) 
-	    // to create a new SimplePointMarker for each PointFeature in 
-	    // earthquakes.  Then add each new SimplePointMarker to the 
-	    // List markers (so that it will be added to the map in the line below)
-	    
-	    
-	    // Add the markers to the map so that they are displayed
-	    map.addMarkers(markers);
-	}
-		
-	/* createMarker: A suggested helper method that takes in an earthquake 
-	 * feature and returns a SimplePointMarker for that earthquake
-	 * 
-	 * In step 3 You can use this method as-is.  Call it from a loop in the 
-	 * setp method.  
-	 * 
-	 * TODO (Step 4): Add code to this method so that it adds the proper 
-	 * styling to each marker based on the magnitude of the earthquake.  
-	*/
-	private SimplePointMarker createMarker(PointFeature feature)
-	{  
-		// To print all of the features in a PointFeature (so you can see what they are)
-		// uncomment the line below.  Note this will only print if you call createMarker 
-		// from setup
-		//System.out.println(feature.getProperties());
-		
-		// Create a new SimplePointMarker at the location given by the PointFeature
-		SimplePointMarker marker = new SimplePointMarker(feature.getLocation());
-		
-		Object magObj = feature.getProperty("magnitude");
-		float mag = Float.parseFloat(magObj.toString());
-		
-		// Here is an example of how to use Processing's color method to generate 
-	    // an int that represents the color yellow.  
-	    int yellow = color(255, 255, 0);
-		
-		// TODO (Step 4): Add code below to style the marker's size and color 
-	    // according to the magnitude of the earthquake.  
-	    // Don't forget about the constants THRESHOLD_MODERATE and 
-	    // THRESHOLD_LIGHT, which are declared above.
-	    // Rather than comparing the magnitude to a number directly, compare 
-	    // the magnitude to these variables (and change their value in the code 
-	    // above if you want to change what you mean by "moderate" and "light")
-	    
-	    
-	    // Finally return the marker
-	    return marker;
-	}
+	}  // End setup
+	
 	
 	public void draw() {
-	    background(10);
-	    map.draw();
-	    addKey();
+		background(0);
+		map.draw();
+		addKey();
+		
+	}
+	
+	// helper method to draw key in GUI
+	private void addKey() {	
+		fill(255, 250, 240);
+		rect(25, 50, 150, 250);
+		
+		fill(0);
+		textAlign(LEFT, CENTER);
+		textSize(12);
+		text("Earthquake Key", 50, 75);
+		fill(color(255,255, 255));
+		triangle(42.5f,122.5f,50,107.5f,57.5f,122.5f);
+		ellipse(50, 135, 15, 15);
+		rect(42.5f,147.5f,15,15);
+		fill(color(255, 0, 0));
+		ellipse(50, 195, 15, 15);
+		fill(color(255, 255, 0));
+		ellipse(50, 215, 15, 15);
+		fill(color(0, 0, 255));
+		ellipse(50, 235, 15, 15);
+		
+		fill(0, 0, 0);
+		text("City Marker", 75, 115);
+		text("Land Quake", 75, 135);
+		text("Ocean Quake", 75, 155);
+		text("Size ~ Magnitude", 45, 175);
+		text("Small", 75, 195);
+		text("Intermediate", 75, 215);
+		text("Deep", 75, 235);
 	}
 
-
-	// helper method to draw key in GUI
-	// TODO: Implement this method to draw the key
-	private void addKey() 
-	{	
-		// Remember you can use Processing's graphics methods here
 	
+	
+	// Checks whether this quake occurred on land.  If it did, it sets the 
+	// "country" property of its PointFeature to the country where it occurred
+	// and returns true.
+	private boolean isLand(PointFeature earthquake) {
+		
+		// For each, check if the earthquake PointFeature is in the 
+		// country in m.  
+		for (Marker m : countryMarkers) {
+			if (isInCountry(earthquake, m)) {
+			return true;
+			}
+		}	
+		
+		//not inside any country
+				if(!countryWithQuakes.containsKey("InSea"))	{
+					ArrayList<String> features = new ArrayList<String>();
+					String earthQuake = earthquake.toString();
+					features.add(earthQuake);
+					countryWithQuakes.put("InSea", features);
+				}
+				else {
+					ArrayList<String> features = countryWithQuakes.get("InSea");
+					String earthQuake = earthquake.toString();
+					features.add(earthQuake);
+					countryWithQuakes.put("InSea", features);
+				}
+
+		return false;
+		}
+	
+		//	prints countries with number of earthquakes as
+		//	Country1: numQuakes1
+		//	Country2: numQuakes2
+		//	...
+		//	OCEAN QUAKES: numOceanQuakes
+	
+	private void printQuakes() 
+	{
+		for (Marker cm : countryMarkers)  {
+			if(countryWithQuakes.containsKey(cm.getProperty("name"))) {
+			ArrayList<String> quakes = countryWithQuakes.get(cm.getProperty("name"));
+			System.out.println(cm.getProperty("name") + " : has " + quakes.size() + " EartQuake as Listed Below");
+			}
+		}
+	System.out.println("There are  " + countryWithQuakes.get("InSea").size() + " in the sea");
+	}
+	
+	
+	
+	// helper method to test whether a given earthquake is in a given country
+	// This will also add the country property to the properties of the earthquake 
+	// feature if it's in one of the countries.
+	private boolean isInCountry(PointFeature earthquake, Marker country) {
+		// getting location of feature
+		Location checkLoc = earthquake.getLocation();
+		
+		// some countries represented it as MultiMarker
+		// looping over SimplePolygonMarkers which make them up to use isInsideByLoc
+		if(country.getClass() == MultiMarker.class) {
+				
+			// looping over markers making up MultiMarker
+			for(Marker marker : ((MultiMarker)country).getMarkers()) {
+					
+				// checking if inside
+				if(((AbstractShapeMarker)marker).isInsideByLocation(checkLoc)) {
+					earthquake.addProperty("country", country.getProperty("name"));
+					countryWithQuakes = matchingCountryAnsQuake (earthquake,country,countryWithQuakes );
+					// return if is inside one
+					return true;
+				}
+			}
+		}
+			
+		// check if inside country represented by SimplePolygonMarker
+		else if(((AbstractShapeMarker)country).isInsideByLocation(checkLoc)) {
+			earthquake.addProperty("country", country.getProperty("name"));
+			countryWithQuakes = matchingCountryAnsQuake (earthquake,country,countryWithQuakes );
+			return true;
+		}
+	
+		return false;
+	}
+	
+	// helper method to map countries with earthquakes that occured in that country 
+	private HashMap<String,ArrayList<String>> matchingCountryAnsQuake (PointFeature earthquake, Marker country, HashMap<String,ArrayList<String>> countryWithQuakes ) 
+	
+	{		
+		if(!countryWithQuakes.containsKey(country.getProperty("name")))	{
+		ArrayList<String> features = new ArrayList<String>();
+		String earthQuake = earthquake.toString();
+		features.add(earthQuake);
+		countryWithQuakes.put((String) country.getProperty("name"), features);
+	}
+	else {
+		
+		ArrayList<String> features = countryWithQuakes.get((String) country.getProperty("name"));
+		String earthQuake = earthquake.toString();
+		features.add(earthQuake);
+		countryWithQuakes.put((String) country.getProperty("name"), features);
+	}
+		return countryWithQuakes;
 	}
 }
