@@ -4,6 +4,7 @@ import de.fhpotsdam.unfolding.data.Feature;
 import de.fhpotsdam.unfolding.data.PointFeature;
 import de.fhpotsdam.unfolding.geo.Location;
 import de.fhpotsdam.unfolding.marker.SimplePointMarker;
+import processing.core.PConstants;
 import processing.core.PGraphics;
 
 /** Implements a visual marker for cities on an earthquake map
@@ -11,7 +12,7 @@ import processing.core.PGraphics;
  * @author Anotida George Chigunwe
  *
  */
-public class CityMarker extends SimplePointMarker {
+public class CityMarker extends CommonMarker {
 	
 	// The size of the triangle marker
 	public static final int TRI_SIZE = 5;  
@@ -30,23 +31,37 @@ public class CityMarker extends SimplePointMarker {
 	/**
 	 * Implementation of method to draw marker on the map.
 	 */
-	public void draw(PGraphics pg, float x, float y) {
-		// Save previous drawing style
-		pg.pushStyle();
-		
-		
-			  pg.beginDraw();			  
-			  pg.stroke(255);
-			  pg.fill(255,0,0);
-			  pg.triangle(x-TRI_SIZE, y+TRI_SIZE, x, y-TRI_SIZE, x+TRI_SIZE, y+TRI_SIZE);			  
-			  pg.endDraw();
+	public void drawMarker(PGraphics pg, float x, float y){
 
-			  // Restore previous drawing style
+//	public void draw(PGraphics pg, float x, float y) {
+		// Save previous drawing style
+		pg.pushStyle();		  
+		pg.stroke(255);
+		pg.fill(255,0,0);
+		pg.triangle(x-TRI_SIZE, y+TRI_SIZE, x, y-TRI_SIZE, x+TRI_SIZE, y+TRI_SIZE);	
+		// Restore previous drawing style
 		pg.popStyle();
 	}
 	
-	/* Local getters for some city properties.  You might not need these 
-	 * in module 4. 	 */
+  public void showTitle(PGraphics pg, float x, float y) {
+		String name = getCity() + " " + getCountry() + " ";
+		String pop = "Pop: " + getPopulation() + " Million";
+		
+		pg.pushStyle();
+		
+		pg.fill(255, 255, 255);
+		pg.textSize(12);
+		pg.rectMode(PConstants.CORNER);
+		pg.rect(x, y-TRI_SIZE-39, Math.max(pg.textWidth(name), pg.textWidth(pop)) + 6, 39);
+		pg.fill(0, 0, 0);
+		pg.textAlign(PConstants.LEFT, PConstants.TOP);
+		pg.text(name, x+3, y-TRI_SIZE-33);
+		pg.text(pop, x+3, y - TRI_SIZE -18);
+		
+		pg.popStyle();
+  };
+	
+  // Local getters for some city properties.
 	public String getCity()
 	{
 		return getStringProperty("name");
